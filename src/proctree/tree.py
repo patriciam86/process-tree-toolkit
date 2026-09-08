@@ -96,6 +96,40 @@ def subtree(pid: int, table: ProcessTable) -> dict[int, ProcessInfo]:
     return {p: table[p] for p in keep}
 
 
+def prune(pid: int, table: ProcessTable) -> ProcessTable:
+    """Drop `pid` and everything below it, as if the whole subtree were killed.
+
+    Nothing outside the subtree is touched, including processes whose
+    ppid pointed into the pruned subtree from outside it (not possible
+    in a real tree, but this function doesn't assume the input is one).
+    """
+    if pid not in table:
+        return dict(table)
+    drop = descendants(pid, table) | {pid}
+    return {p: proc for p, proc in table.items() if p not in drop}
+
+
+def reparent(pid: int, new_ppid: int, table: ProcessTable) -> ProcessTable:
+    """Drop `pid` but keep its direct children, handing them to `new_ppid`.
+
+    Models what actually happens when a single process dies: its
+    children don't vanish with it, they get adopted (by init, or by
+    whatever subreaper is watching) and carry on under a new parent.
+    Use `prune` instead if the whole subtree should disappear.
+    """
+    if pid not in table:
+        return dict(table)
+    result: dict[int, ProcessInfo] = {}
+    for p, proc in table.items():
+        if p == pid:
+            continue
+        if proc.ppid == pid:
+            result[p] = proc._replace(ppid=new_ppid)
+        else:
+            result[p] = proc
+    return result
+
+
 def render_tree(table: ProcessTable, root: Optional[int] = None) -> str:
     """Render as ASCII, one process per line, ordered by pid at each level.
 

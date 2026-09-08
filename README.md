@@ -76,6 +76,11 @@ def read_snapshot() -> list[ProcessInfo]:
 - `ancestors(pid, table)` — chain from the immediate parent up to the root.
 - `descendants(pid, table)` — every pid reachable below `pid`.
 - `subtree(pid, table)` — the table restricted to `pid` and below.
+- `prune(pid, table)` — table with `pid` and its whole subtree removed, as
+  if it had all been killed together.
+- `reparent(pid, new_ppid, table)` — table with `pid` removed but its direct
+  children handed to `new_ppid`, matching how a single killed process gets
+  its orphans adopted instead of taking them down with it.
 - `render_tree(table, root=None)` — ASCII rendering of the whole forest or
   one subtree.
 

@@ -5,7 +5,9 @@ from proctree import (
     ancestors,
     children_map,
     descendants,
+    prune,
     render_tree,
+    reparent,
     roots,
     subtree,
     to_table,
@@ -65,6 +67,34 @@ class TreeTests(unittest.TestCase):
         sub = subtree(20, self.table)
         self.assertEqual(set(sub), {20, 21, 22})
         self.assertEqual(subtree(999, self.table), {})
+
+    def test_prune_drops_subtree(self) -> None:
+        pruned = prune(20, self.table)
+        self.assertEqual(set(pruned), {1, 10, 30})
+
+    def test_prune_missing_pid_is_noop(self) -> None:
+        pruned = prune(999, self.table)
+        self.assertEqual(set(pruned), set(self.table))
+
+    def test_prune_leaf(self) -> None:
+        pruned = prune(21, self.table)
+        self.assertEqual(set(pruned), {1, 10, 20, 22, 30})
+
+    def test_reparent_adopts_children(self) -> None:
+        adopted = reparent(20, 1, self.table)
+        self.assertNotIn(20, adopted)
+        self.assertEqual(adopted[21].ppid, 1)
+        self.assertEqual(adopted[22].ppid, 1)
+        self.assertEqual(children_map(adopted)[1], sorted([10, 21, 22, 30]))
+
+    def test_reparent_leaves_unrelated_processes_alone(self) -> None:
+        adopted = reparent(20, 1, self.table)
+        self.assertEqual(adopted[10], self.table[10])
+        self.assertEqual(adopted[30], self.table[30])
+
+    def test_reparent_missing_pid_is_noop(self) -> None:
+        adopted = reparent(999, 1, self.table)
+        self.assertEqual(adopted, dict(self.table))
 
     def test_render_tree_root(self) -> None:
         text = render_tree(self.table, root=20)
