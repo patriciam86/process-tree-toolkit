@@ -130,6 +130,48 @@ def reparent(pid: int, new_ppid: int, table: ProcessTable) -> ProcessTable:
     return result
 
 
+class Reparented(NamedTuple):
+    pid: int
+    old_ppid: int
+    new_ppid: int
+
+
+class SnapshotDiff(NamedTuple):
+    started: list[ProcessInfo]
+    stopped: list[ProcessInfo]
+    reparented: list[Reparented]
+
+
+def diff(old: ProcessTable, new: ProcessTable) -> SnapshotDiff:
+    """Compare two snapshots of the same machine taken at different times.
+
+    A pid only in `new` started, a pid only in `old` stopped. A pid in
+    both with a changed ppid was reparented, whether because its
+    original parent died and it got adopted, or because something
+    explicitly moved it (see `reparent`). Everything else is treated
+    as unchanged even if its name field differs, since a pid getting
+    reused for a different program between snapshots looks the same
+    as one snapshot just having stale process names.
+    """
+    started = sorted(
+        (proc for pid, proc in new.items() if pid not in old),
+        key=lambda proc: proc.pid,
+    )
+    stopped = sorted(
+        (proc for pid, proc in old.items() if pid not in new),
+        key=lambda proc: proc.pid,
+    )
+    reparented = sorted(
+        (
+            Reparented(pid, old[pid].ppid, new[pid].ppid)
+            for pid in old.keys() & new.keys()
+            if old[pid].ppid != new[pid].ppid
+        ),
+        key=lambda r: r.pid,
+    )
+    return SnapshotDiff(started=started, stopped=stopped, reparented=reparented)
+
+
 def render_tree(table: ProcessTable, root: Optional[int] = None) -> str:
     """Render as ASCII, one process per line, ordered by pid at each level.
 

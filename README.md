@@ -81,6 +81,8 @@ def read_snapshot() -> list[ProcessInfo]:
 - `reparent(pid, new_ppid, table)` — table with `pid` removed but its direct
   children handed to `new_ppid`, matching how a single killed process gets
   its orphans adopted instead of taking them down with it.
+- `diff(old, new)` — compare two snapshots of the same machine, returning
+  which pids started, which stopped, and which got a new ppid.
 - `render_tree(table, root=None)` — ASCII rendering of the whole forest or
   one subtree.
 

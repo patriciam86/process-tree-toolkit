@@ -2,9 +2,11 @@ import unittest
 
 from proctree import (
     ProcessInfo,
+    Reparented,
     ancestors,
     children_map,
     descendants,
+    diff,
     prune,
     render_tree,
     reparent,
@@ -112,6 +114,50 @@ class TreeTests(unittest.TestCase):
         self.assertTrue(lines[-1].endswith("`-- cron (30)"))
         self.assertTrue(any(line.endswith("`-- make (22)") for line in lines))
         self.assertEqual(len(lines), len(self.table))
+
+
+class DiffTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.table = to_table(SAMPLE)
+
+    def test_diff_no_change(self) -> None:
+        result = diff(self.table, self.table)
+        self.assertEqual(result.started, [])
+        self.assertEqual(result.stopped, [])
+        self.assertEqual(result.reparented, [])
+
+    def test_diff_started(self) -> None:
+        new = to_table(SAMPLE + [ProcessInfo(pid=40, ppid=1, name="httpd")])
+        result = diff(self.table, new)
+        self.assertEqual(result.started, [ProcessInfo(pid=40, ppid=1, name="httpd")])
+        self.assertEqual(result.stopped, [])
+        self.assertEqual(result.reparented, [])
+
+    def test_diff_stopped(self) -> None:
+        new = to_table(p for p in SAMPLE if p.pid != 22)
+        result = diff(self.table, new)
+        self.assertEqual(result.started, [])
+        self.assertEqual(result.stopped, [ProcessInfo(pid=22, ppid=20, name="make")])
+        self.assertEqual(result.reparented, [])
+
+    def test_diff_reparented(self) -> None:
+        new = to_table(reparent(20, 1, self.table).values())
+        result = diff(self.table, new)
+        self.assertEqual(result.started, [])
+        self.assertEqual(result.stopped, [ProcessInfo(pid=20, ppid=10, name="bash")])
+        self.assertEqual(
+            result.reparented,
+            [Reparented(pid=21, old_ppid=20, new_ppid=1), Reparented(pid=22, old_ppid=20, new_ppid=1)],
+        )
+
+    def test_diff_ignores_name_only_change(self) -> None:
+        new = to_table(
+            p._replace(name="bash-v2") if p.pid == 20 else p for p in SAMPLE
+        )
+        result = diff(self.table, new)
+        self.assertEqual(result.started, [])
+        self.assertEqual(result.stopped, [])
+        self.assertEqual(result.reparented, [])
 
 
 if __name__ == "__main__":
