@@ -50,23 +50,27 @@ print(descendants(20, table))
 # {21, 22}
 ```
 
-Turning a real `ps -ef` snapshot into `ProcessInfo` records is a couple of
-lines you write yourself, on purpose — this library has no opinion on where
-your data comes from:
+The core module never shells out or reads `/proc` — it has no opinion on
+where your data comes from. `proctree.parse` is an opt-in helper for turning
+the two most common `ps` output shapes into `ProcessInfo` records, kept out
+of the top-level import so pulling it in is a deliberate choice:
 
 ```python
 import subprocess
 
-def read_snapshot() -> list[ProcessInfo]:
-    out = subprocess.run(
-        ["ps", "-eo", "pid,ppid,comm"], capture_output=True, text=True, check=True
-    ).stdout
-    procs = []
-    for line in out.splitlines()[1:]:
-        pid, ppid, name = line.split(maxsplit=2)
-        procs.append(ProcessInfo(pid=int(pid), ppid=int(ppid), name=name))
-    return procs
+from proctree.parse import parse_ps_eo
+
+out = subprocess.run(
+    ["ps", "-eo", "pid,ppid,comm"], capture_output=True, text=True, check=True
+).stdout
+snapshot = parse_ps_eo(out)
 ```
+
+`parse_ps_ef` does the same for `ps -ef`, where the last column is a full
+command line rather than a bare name — it takes the basename of argv[0] as
+the process name. Anything outside those two shapes (a custom `ps -eo`
+column order, `/proc` walking, a JSON export) is still a couple of lines you
+write yourself.
 
 ## API
 
@@ -85,6 +89,11 @@ def read_snapshot() -> list[ProcessInfo]:
   which pids started, which stopped, and which got a new ppid.
 - `render_tree(table, root=None)` — ASCII rendering of the whole forest or
   one subtree.
+
+`proctree.parse` (opt-in, not exported from the top-level package):
+
+- `parse_ps_eo(output)` — parse `ps -eo pid,ppid,comm` output.
+- `parse_ps_ef(output)` — parse `ps -ef` output.
 
 ## Running the tests
 
