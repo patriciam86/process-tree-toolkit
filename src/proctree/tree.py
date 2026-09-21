@@ -172,6 +172,79 @@ def diff(old: ProcessTable, new: ProcessTable) -> SnapshotDiff:
     return SnapshotDiff(started=started, stopped=stopped, reparented=reparented)
 
 
+class DuplicatePid(NamedTuple):
+    pid: int
+    count: int
+
+
+class Cycle(NamedTuple):
+    pids: tuple[int, ...]
+
+
+class ValidationResult(NamedTuple):
+    duplicate_pids: list[DuplicatePid]
+    cycles: list[Cycle]
+
+    def __bool__(self) -> bool:
+        return not self.duplicate_pids and not self.cycles
+
+
+def validate(processes: Iterable[ProcessInfo]) -> ValidationResult:
+    """Check a raw snapshot for issues the rest of this module tolerates silently.
+
+    `to_table` resolves a duplicate pid by letting the last entry win,
+    and `ancestors` just stops walking when it hits a cycle. Both are
+    reasonable defaults for functions that never assume a well-formed
+    tree, but something building a snapshot by hand — a custom parser,
+    a fuzzer, a test fixture — may want to know it got bad data instead
+    of having it quietly patched over. Duplicate pids are reported
+    against the raw input, before `to_table` would collapse them. A
+    process reporting itself as its own parent is treated as a root
+    (see `roots`), not a cycle; only a loop of two or more distinct
+    pids counts.
+
+    The result is falsy when the snapshot is clean, so `if validate(procs):`
+    reads as "there's a problem".
+    """
+    processes = list(processes)
+
+    counts: dict[int, int] = {}
+    for proc in processes:
+        counts[proc.pid] = counts.get(proc.pid, 0) + 1
+    duplicate_pids = sorted(
+        (DuplicatePid(pid, count) for pid, count in counts.items() if count > 1),
+        key=lambda d: d.pid,
+    )
+
+    table = to_table(processes)
+    in_cycle: set[int] = set()
+    cycles: list[Cycle] = []
+    for pid in sorted(table):
+        if pid in in_cycle:
+            continue
+        path: list[int] = []
+        visited: dict[int, int] = {}
+        current = pid
+        while True:
+            proc = table.get(current)
+            if proc is None or proc.ppid == proc.pid:
+                break
+            if current in in_cycle:
+                # Already known to lead into a cycle found from an earlier
+                # starting pid — nothing new to report.
+                break
+            if current in visited:
+                cycle_pids = tuple(path[visited[current] :])
+                cycles.append(Cycle(cycle_pids))
+                in_cycle.update(cycle_pids)
+                break
+            visited[current] = len(path)
+            path.append(current)
+            current = proc.ppid
+
+    return ValidationResult(duplicate_pids=duplicate_pids, cycles=cycles)
+
+
 def render_tree(table: ProcessTable, root: Optional[int] = None) -> str:
     """Render as ASCII, one process per line, ordered by pid at each level.
 

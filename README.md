@@ -89,6 +89,11 @@ write yourself.
   which pids started, which stopped, and which got a new ppid.
 - `render_tree(table, root=None)` — ASCII rendering of the whole forest or
   one subtree.
+- `validate(processes)` — check a raw snapshot for duplicate pids and
+  parent/child cycles, the two ways bad input gets silently tolerated
+  elsewhere in this module (`to_table` lets the last duplicate win,
+  `ancestors` just stops at a cycle). Returns a `ValidationResult` that's
+  falsy when the snapshot is clean.
 
 `proctree.parse` (opt-in, not exported from the top-level package):
 

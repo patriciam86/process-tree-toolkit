@@ -1,8 +1,11 @@
 from .tree import (
+    Cycle,
+    DuplicatePid,
     ProcessInfo,
     ProcessTable,
     Reparented,
     SnapshotDiff,
+    ValidationResult,
     ancestors,
     children_map,
     descendants,
@@ -13,13 +16,17 @@ from .tree import (
     roots,
     subtree,
     to_table,
+    validate,
 )
 
 __all__ = [
+    "Cycle",
+    "DuplicatePid",
     "ProcessInfo",
     "ProcessTable",
     "Reparented",
     "SnapshotDiff",
+    "ValidationResult",
     "ancestors",
     "children_map",
     "descendants",
@@ -30,4 +37,5 @@ __all__ = [
     "roots",
     "subtree",
     "to_table",
+    "validate",
 ]

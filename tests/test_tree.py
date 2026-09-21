@@ -1,6 +1,8 @@
 import unittest
 
 from proctree import (
+    Cycle,
+    DuplicatePid,
     ProcessInfo,
     Reparented,
     ancestors,
@@ -13,6 +15,7 @@ from proctree import (
     roots,
     subtree,
     to_table,
+    validate,
 )
 
 SAMPLE = [
@@ -114,6 +117,56 @@ class TreeTests(unittest.TestCase):
         self.assertTrue(lines[-1].endswith("`-- cron (30)"))
         self.assertTrue(any(line.endswith("`-- make (22)") for line in lines))
         self.assertEqual(len(lines), len(self.table))
+
+
+class ValidateTests(unittest.TestCase):
+    def test_clean_snapshot_is_valid(self) -> None:
+        result = validate(SAMPLE)
+        self.assertTrue(result)
+        self.assertEqual(result.duplicate_pids, [])
+        self.assertEqual(result.cycles, [])
+
+    def test_detects_duplicate_pid(self) -> None:
+        dup = SAMPLE + [ProcessInfo(pid=10, ppid=1, name="sshd-v2")]
+        result = validate(dup)
+        self.assertFalse(result)
+        self.assertEqual(result.duplicate_pids, [DuplicatePid(pid=10, count=2)])
+        self.assertEqual(result.cycles, [])
+
+    def test_self_loop_is_a_root_not_a_cycle(self) -> None:
+        processes = [
+            ProcessInfo(pid=1, ppid=1, name="init"),
+            ProcessInfo(pid=10, ppid=1, name="sshd"),
+        ]
+        result = validate(processes)
+        self.assertTrue(result)
+
+    def test_detects_cycle(self) -> None:
+        processes = [
+            ProcessInfo(pid=1, ppid=2, name="a"),
+            ProcessInfo(pid=2, ppid=1, name="b"),
+        ]
+        result = validate(processes)
+        self.assertFalse(result)
+        self.assertEqual(result.duplicate_pids, [])
+        self.assertEqual(result.cycles, [Cycle(pids=(1, 2))])
+
+    def test_cycle_reported_once_not_per_member(self) -> None:
+        processes = [
+            ProcessInfo(pid=1, ppid=2, name="a"),
+            ProcessInfo(pid=2, ppid=1, name="b"),
+        ]
+        result = validate(processes)
+        self.assertEqual(len(result.cycles), 1)
+
+    def test_process_pointing_into_a_cycle_is_not_itself_in_it(self) -> None:
+        processes = [
+            ProcessInfo(pid=1, ppid=2, name="a"),
+            ProcessInfo(pid=2, ppid=1, name="b"),
+            ProcessInfo(pid=5, ppid=1, name="orphaned-into-cycle"),
+        ]
+        result = validate(processes)
+        self.assertEqual(result.cycles, [Cycle(pids=(1, 2))])
 
 
 class DiffTests(unittest.TestCase):
