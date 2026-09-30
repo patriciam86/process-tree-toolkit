@@ -250,26 +250,38 @@ def render_tree(table: ProcessTable, root: Optional[int] = None) -> str:
 
     With `root` given, renders just that pid's subtree. Otherwise
     renders every root in the snapshot, in pid order.
+
+    Each pid is printed at most once, so a ppid cycle reached through
+    `root` ends instead of looping forever. The walk is iterative so a
+    very deep chain can't hit the interpreter's recursion limit.
     """
     kids = children_map(table)
     start_pids = [root] if root is not None else roots(table)
     lines: list[str] = []
+    seen: set[int] = set()
 
-    def walk(pid: int, prefix: str, connector: str, next_prefix: str) -> None:
-        proc = table[pid]
-        lines.append(f"{prefix}{connector}{proc.name} ({proc.pid})")
-        child_pids = kids.get(pid, [])
-        for i, child in enumerate(child_pids):
-            last = i == len(child_pids) - 1
-            walk(
-                child,
-                next_prefix,
-                "`-- " if last else "|-- ",
-                next_prefix + ("    " if last else "|   "),
-            )
-
-    for pid in start_pids:
-        if pid in table:
-            walk(pid, "", "", "")
+    for start in start_pids:
+        if start not in table:
+            continue
+        stack = [(start, "", "", "")]
+        while stack:
+            pid, prefix, connector, next_prefix = stack.pop()
+            if pid in seen:
+                continue
+            seen.add(pid)
+            proc = table[pid]
+            lines.append(f"{prefix}{connector}{proc.name} ({proc.pid})")
+            child_pids = kids.get(pid, [])
+            # Pushed in reverse so the lowest pid is popped first.
+            for i in range(len(child_pids) - 1, -1, -1):
+                last = i == len(child_pids) - 1
+                stack.append(
+                    (
+                        child_pids[i],
+                        next_prefix,
+                        "`-- " if last else "|-- ",
+                        next_prefix + ("    " if last else "|   "),
+                    )
+                )
 
     return "\n".join(lines)

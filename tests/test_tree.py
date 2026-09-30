@@ -119,6 +119,39 @@ class TreeTests(unittest.TestCase):
         self.assertEqual(len(lines), len(self.table))
 
 
+class RenderRobustnessTests(unittest.TestCase):
+    def test_render_tree_root_in_cycle_terminates(self) -> None:
+        table = to_table(
+            [
+                ProcessInfo(pid=1, ppid=2, name="a"),
+                ProcessInfo(pid=2, ppid=1, name="b"),
+            ]
+        )
+        self.assertEqual(render_tree(table, root=1), "a (1)\n`-- b (2)")
+
+    def test_render_tree_missing_root_is_empty(self) -> None:
+        self.assertEqual(render_tree(to_table(SAMPLE), root=999), "")
+
+    def test_render_tree_deep_chain(self) -> None:
+        depth = 3000
+        table = to_table(
+            ProcessInfo(pid=i, ppid=i - 1, name="p") for i in range(1, depth + 1)
+        )
+        self.assertEqual(len(render_tree(table).splitlines()), depth)
+
+    def test_render_tree_nested_prefixes(self) -> None:
+        text = render_tree(to_table(SAMPLE))
+        self.assertEqual(
+            text,
+            "init (1)\n"
+            "|-- sshd (10)\n"
+            "|   `-- bash (20)\n"
+            "|       |-- vim (21)\n"
+            "|       `-- make (22)\n"
+            "`-- cron (30)",
+        )
+
+
 class ValidateTests(unittest.TestCase):
     def test_clean_snapshot_is_valid(self) -> None:
         result = validate(SAMPLE)
